@@ -1,14 +1,10 @@
-import copy
 import os
 from typing import Optional, Callable, List, Union, Tuple, Dict
 
 import torch
 from torch_geometric.data import Data
 from torch_geometric.data.dataset import Dataset
-from torch_geometric.data.separate import separate
 from tqdm import tqdm
-
-from graph_utils import separate, my_hetero_collate
 
 
 def linear_mapping(model: Dict[str, torch.Tensor],
