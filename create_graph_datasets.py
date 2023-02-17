@@ -1,6 +1,7 @@
 import argparse
 from copy import deepcopy
 import os
+import yaml
 
 import numpy as np
 import torch
@@ -25,7 +26,8 @@ def args_parser():
     parser.add_argument('--modelsPergraph', type=int, default=3, help='number of param nodes per graph')
     parser.add_argument('--aggrPergraph', type=int, default=2, help='number of aggr nodes per graph')
     parser.add_argument('--modeslPeraggr', type=int, default=2, help='number of param nodes per aggr')
-    parser.add_argument('--exclusive', type=bool, default=False, help='whether one model is used ONCE for aggregation')
+    parser.add_argument('--exclusive', default=False, action='store_true',
+                        help='whether one model is used ONCE for aggregation')
     parser.add_argument('--batchsize_cnn', type=int, default=64, help='batch size of MNIST for training CNN')
     parser.add_argument('--model_perturb', type=str, default=None, help='how to perturb data')
     parser.add_argument('--perturb_rate', type=float, default=0.3, help='ratio of models perturbed')
@@ -47,6 +49,10 @@ if __name__ == '__main__':
         root += 'Exclusive'
     if not os.path.isdir(root):
         os.mkdir(root)
+
+    with open(os.path.join(root, 'data.yml'), 'w') as outfile:
+        yaml.dump(args, outfile, default_flow_style=False)
+
     root = os.path.join(root, 'raw')
     if not os.path.isdir(root):
         os.mkdir(root)
