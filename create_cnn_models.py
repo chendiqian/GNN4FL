@@ -42,6 +42,8 @@ if __name__ == '__main__':
     else:
         sl = range(1, 20)
     for seed in sl:
+        if not os.path.isdir(os.path.join(root, str(seed))):
+            os.mkdir(os.path.join(root, str(seed)))
         for m in range(args.modelsPerseed):
             print(f'seed: {seed}, {m}th model')
             train_digits = np.random.permutation(num_classes)[:args.digitsPermodel]
@@ -94,4 +96,4 @@ if __name__ == '__main__':
                     best_model = deepcopy(cnn.state_dict())
                 pbar.set_postfix({'train acc': corrects / counts, 'val acc': val_acc})
 
-            torch.save(best_model, os.path.join(root, f'model{m}.pt'))
+            torch.save(best_model, os.path.join(root, str(seed), f'model{m}.pt'))
