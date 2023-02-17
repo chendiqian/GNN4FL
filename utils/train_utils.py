@@ -17,3 +17,16 @@ def mnist_validation(dataloader: DataLoader,
         counts += inputs.shape[0]
 
     return (corrects / counts).item()
+
+
+@torch.no_grad()
+def gnn_validation(dataloader, model):
+    corrects = 0
+    counts = 0
+    for i, data in enumerate(dataloader):
+        outputs = model(data.x_dict, data.edge_index_dict)
+        preds = (outputs > 0.).detach().to(torch.float)
+        corrects += (preds == data.y).sum()
+        counts += data.y.shape[0]
+
+    return corrects / counts
