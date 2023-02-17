@@ -2,9 +2,9 @@ from typing import Dict
 
 import torch
 from torch_geometric.typing import NodeType, EdgeType, Adj
-from my_sage_conv import MySAGEConv
+from .my_sage_conv import MySAGEConv
 from torch import Tensor, nn
-from const import CONST
+from .const import CONST
 
 
 class HeteroConv(nn.Module):

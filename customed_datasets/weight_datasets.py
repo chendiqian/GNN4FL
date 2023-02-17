@@ -82,11 +82,6 @@ class PretrainedWeights(Dataset):
         return return_weights, label
 
     def process(self):
-        # idx = {'train': range(int(len(self.raw_file_names) * 0.8)),
-        #        'val': range(int(len(self.raw_file_names) * 0.8),
-        #                     int(len(self.raw_file_names) * 0.9)),
-        #        'test': range(int(len(self.raw_file_names) * 0.9),
-        #                      int(len(self.raw_file_names)))}
 
         models = []
         for filename in tqdm(self.raw_file_names):
