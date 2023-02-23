@@ -5,12 +5,13 @@ import random
 
 import torch
 from tqdm import tqdm
+import numpy as np
 
 from customed_datasets.get_mnist import get_mnist
 from models.mnist_cnn import MNIST_CNN
 from utils.train_utils import mnist_validation
 from customed_datasets.weight_datasets import DefaultTransform, AdditiveNoise, SignFlip
-from utils.fl_utils import fed_avg
+from utils.fl_utils import fed_avg, make_gradient_ascent
 
 from customed_datasets.graph_datasets import linear_mapping
 from torch_geometric.data import HeteroData
@@ -29,13 +30,14 @@ def args_parser():
     parser.add_argument('--model_perturb', type=str, default=None, help='how to perturb data')
     parser.add_argument('--perturb_rate', type=float, default=0.3, help='ratio of models perturbed')
     parser.add_argument('--noise_scale', type=float, default=0.3, help='Gauss(mean=0, std=params.std() * noise_scale)')
+    parser.add_argument('--ascent_epochs', type=int, default=1)
     parser.add_argument('--target_dim', type=int, default=32, help='number of hidden dimensions for projection')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = args_parser()
-    _, train_labels, val_dataset, _ = get_mnist()
+    train_dataset, train_labels, val_dataset, _ = get_mnist()
     val_loader_full = torch.utils.data.DataLoader(val_dataset, batch_size=256, shuffle=True)
     num_classes = max(train_labels) + 1
     cnn = MNIST_CNN()
@@ -67,6 +69,14 @@ if __name__ == '__main__':
             perturb = AdditiveNoise(args.perturb_rate, args.noise_scale)
         elif args.model_perturb == 'sign':
             perturb = SignFlip(args.perturb_rate)
+        elif args.model_perturb == 'grad_ascent':
+            perturb = make_gradient_ascent(torch.utils.data.DataLoader(
+                torch.utils.data.Subset(train_dataset,
+                                        np.random.choice(len(train_dataset), int(0.05 * len(train_dataset)),
+                                                         replace=False)), batch_size=64, shuffle=True),
+                                           MNIST_CNN(),
+                                           args.ascent_epochs,
+                                           args.perturb_rate)
         else:
             raise NotImplementedError
 

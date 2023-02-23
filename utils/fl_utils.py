@@ -2,7 +2,7 @@ import torch
 from typing import List, Dict
 import random
 import copy
-
+from tqdm import tqdm
 
 def fed_avg(models: Dict[str, torch.Tensor]):
     avg_weights = {}
@@ -89,3 +89,34 @@ def fed_avg_weight_lost(models: Dict[str, torch.Tensor]):
         new_models[k] = sum_weights[k] / counts[i].reshape(shapes[i])
 
     return new_models
+
+
+def make_gradient_ascent(dataloader, model, epochs, prob):
+    def gradient_ascent(weights):
+        if random.random() > prob:
+            return weights, 1.
+        model.load_state_dict(weights)
+        model.train()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        criterion = torch.nn.CrossEntropyLoss()
+
+        for epoch in range(epochs):  # loop over the dataset multiple times
+            counts = 0
+            corrects = 0
+            for i, data in enumerate(dataloader):
+                inputs, labels = data
+
+                optimizer.zero_grad()
+
+                outputs = model(inputs)
+                loss = - criterion(outputs, labels)   # flip the sign of loss
+                loss.backward()
+                optimizer.step()
+
+                counts += inputs.shape[0]
+                corrects += (outputs.argmax(1) == labels).sum().item()
+
+            print(f'epoch: {epoch}, grad ascent acc: {corrects / counts}')
+
+        return model.state_dict(), 0.
+    return gradient_ascent
