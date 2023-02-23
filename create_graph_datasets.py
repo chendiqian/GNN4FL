@@ -3,7 +3,6 @@ import os
 import yaml
 import random
 
-import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -21,7 +20,6 @@ def args_parser():
     parser = argparse.ArgumentParser(description='hyper params for creating graph dataset')
     parser.add_argument('--root', type=str, default='./datasets')
     parser.add_argument('--cnn_db', type=str, help='where the cnn models are stored')
-    parser.add_argument('--subset', type=float, default=0.2, help='subset ratio of MNIST for faster taining')
     parser.add_argument('--num_graphs', type=int, default=1, help='how many graphs you want in a graph dataset')
     parser.add_argument('--modelsPergraph', type=int, default=3, help='number of param nodes per graph')
     parser.add_argument('--aggrPergraph', type=int, default=2, help='number of aggr nodes per graph')
@@ -31,15 +29,14 @@ def args_parser():
     parser.add_argument('--model_perturb', type=str, default=None, help='how to perturb data')
     parser.add_argument('--perturb_rate', type=float, default=0.3, help='ratio of models perturbed')
     parser.add_argument('--noise_scale', type=float, default=0.3, help='Gauss(mean=0, std=params.std() * noise_scale)')
+    parser.add_argument('--target_dim', type=int, default=32, help='number of hidden dimensions for projection')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = args_parser()
     _, train_labels, val_dataset, _ = get_mnist()
-    subset_mask = np.random.randint(0, len(val_dataset), int(len(val_dataset) * args.subset))
-    valset_full_digit = torch.utils.data.Subset(val_dataset, subset_mask)
-    val_loader_full = torch.utils.data.DataLoader(valset_full_digit, batch_size=128, shuffle=True)
+    val_loader_full = torch.utils.data.DataLoader(val_dataset, batch_size=256, shuffle=True)
     num_classes = max(train_labels) + 1
     cnn = MNIST_CNN()
     criterion = torch.nn.CrossEntropyLoss()
@@ -105,7 +102,7 @@ if __name__ == '__main__':
                           y=labels)
 
         # linear mapping
-        features = linear_mapping(weights, 1024)
+        features = linear_mapping(weights, args.target_dim)
         g = HeteroData(aggregator={'x': torch.tensor(aggregated_val_accs)[:, None]},
                        clients={'x': features},
                        clients__aggregator={'edge_index': edge_index},

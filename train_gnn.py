@@ -22,6 +22,7 @@ def args_parser():
     parser.add_argument('--batchsize', type=int, default=64)
     parser.add_argument('--hidden', type=int, default=128)
     parser.add_argument('--layers', type=int, default=3)
+    parser.add_argument('--in_feature', type=int, default=32)
     return parser.parse_args()
 
 
@@ -42,7 +43,7 @@ if __name__ == '__main__':
                              batch_size=args.batchsize,
                              collate_fn=my_hetero_collate)
 
-    model = HeteroGNNHomofeatures(feature_in_channels=1024,
+    model = HeteroGNNHomofeatures(feature_in_channels=args.in_feature,
                                   aggr_in_channels=1,
                                   hidden_channels=args.hidden,
                                   out_channels=1,
