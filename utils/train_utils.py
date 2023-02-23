@@ -30,3 +30,15 @@ def gnn_validation(dataloader, model):
         counts += data.y.shape[0]
 
     return corrects / counts
+
+
+@torch.no_grad()
+def mlp_validation(dataloader, model):
+    corrects = 0
+    counts = 0
+    for i, (data, label) in enumerate(dataloader):
+        outputs = model(data)
+        preds = (outputs > 0.).detach().to(torch.float)
+        corrects += (preds == label).sum()
+        counts += label.shape[0]
+    return corrects / counts

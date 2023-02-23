@@ -1,6 +1,18 @@
 import torch
-from typing import List
+from typing import List, Tuple
 from torch_geometric.data import HeteroData
+
+
+def model_params_collate(graphs: List[HeteroData]) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    For MLP baseline
+
+    :param graphs:
+    :return:
+    """
+    xs = torch.cat([g.x_dict['clients'] for g in graphs], dim=0)
+    ys = torch.cat([g.y for g in graphs], dim=0)
+    return xs, ys
 
 
 def my_hetero_collate(graphs: List[HeteroData]) -> HeteroData:
