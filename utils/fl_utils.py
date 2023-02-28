@@ -91,7 +91,7 @@ def fed_avg_weight_lost(models: Dict[str, torch.Tensor]):
     return new_models
 
 
-def make_gradient_ascent(dataloader, model, epochs, prob):
+def make_gradient_ascent(dataloader, model, iters, prob):
     def gradient_ascent(weights):
         if random.random() > prob:
             return weights, 1.
@@ -100,23 +100,43 @@ def make_gradient_ascent(dataloader, model, epochs, prob):
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         criterion = torch.nn.CrossEntropyLoss()
 
-        for epoch in range(epochs):  # loop over the dataset multiple times
-            counts = 0
-            corrects = 0
-            for i, data in enumerate(dataloader):
-                inputs, labels = data
+        for i, data in enumerate(dataloader):
+            inputs, labels = data
 
-                optimizer.zero_grad()
+            optimizer.zero_grad()
 
-                outputs = model(inputs)
-                loss = - criterion(outputs, labels)   # flip the sign of loss
-                loss.backward()
-                optimizer.step()
-
-                counts += inputs.shape[0]
-                corrects += (outputs.argmax(1) == labels).sum().item()
-
-            print(f'epoch: {epoch}, grad ascent acc: {corrects / counts}')
+            outputs = model(inputs)
+            loss = - criterion(outputs, labels)   # flip the sign of loss
+            loss.backward()
+            optimizer.step()
+            if i + 1 >= iters:
+                break
 
         return model.state_dict(), 0.
     return gradient_ascent
+
+
+def make_all_to_label(dataloader, model, iters=1, prob=0., label=0):
+    def all_to_label(weights):
+        if random.random() > prob:
+            return weights, 1.
+        model.load_state_dict(weights)
+        model.train()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        criterion = torch.nn.CrossEntropyLoss()
+
+        for i, data in enumerate(dataloader):
+            inputs, labels = data
+            labels = (labels.new_ones(labels.shape) * label).to(torch.long)
+
+            optimizer.zero_grad()
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            if i + 1 >= iters:
+                break
+
+        return model.state_dict(), 0.
+    return all_to_label
