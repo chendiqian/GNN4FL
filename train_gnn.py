@@ -5,6 +5,7 @@ from copy import deepcopy
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from customed_datasets.graph_datasets import HeteroGraphDataset
@@ -51,12 +52,13 @@ if __name__ == '__main__':
     criterion = torch.nn.BCEWithLogitsLoss()
 
     test_accs = []
-    for _ in range(args.runs):
+    for r in range(args.runs):
         model.reset_parameters()
         optimizer = torch.optim.Adam(model.parameters(), lr=1.e-3)
         pbar = tqdm(range(args.epoch))
         best_model_dict = None
         best_val_acc = 0.
+        writer = SummaryWriter(f'./logs/hid{args.hidden}layer{args.layers}/run{r}')
         for epoch in pbar:  # loop over the dataset multiple times
             losses = 0.
             counts = 0
@@ -90,10 +92,17 @@ if __name__ == '__main__':
 
             pbar.set_postfix({'loss': losses, 'train_acc': train_acc, 'val_acc': val_acc})
 
+            writer.add_scalar('loss/training loss', losses, epoch)
+            writer.add_scalar('acc/training acc', train_acc, epoch)
+            writer.add_scalar('acc/val acc', val_acc, epoch)
+
         model.load_state_dict(best_model_dict)
         model.eval()
         test_acc = gnn_validation(test_loader, model)
         print(f'test acc: {test_acc}')
         test_accs.append(test_acc.item())
+
+        writer.flush()
+        writer.close()
 
     print(f'mean: {np.mean(test_accs)} ± std: {np.std(test_accs)}')
