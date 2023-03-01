@@ -55,6 +55,7 @@ if __name__ == '__main__':
     for r in range(args.runs):
         model.reset_parameters()
         optimizer = torch.optim.Adam(model.parameters(), lr=1.e-3)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.3, patience=30,)
         pbar = tqdm(range(args.epoch))
         best_model_dict = None
         best_val_acc = 0.
@@ -85,6 +86,7 @@ if __name__ == '__main__':
 
             model.eval()
             val_acc = gnn_validation(val_loader, model)
+            scheduler.step(val_acc)
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
