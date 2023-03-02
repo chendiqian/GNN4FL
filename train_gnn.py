@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from customed_datasets.graph_datasets import HeteroGraphDataset
-from models.hetero_gnn import HeteroGNNHomofeatures
+from models.hetero_gnn import HeteroGNN
 from utils.graph_utils import my_hetero_collate
 from utils.train_utils import gnn_validation
 
@@ -44,11 +44,11 @@ if __name__ == '__main__':
                              batch_size=args.batchsize,
                              collate_fn=my_hetero_collate)
 
-    model = HeteroGNNHomofeatures(feature_in_channels=args.in_feature,
-                                  aggr_in_channels=1,
-                                  hidden_channels=args.hidden,
-                                  out_channels=1,
-                                  num_layers=args.layers,)
+    model = HeteroGNN(feature_in_channels=args.in_feature,
+                      aggr_in_channels=1,
+                      hidden_channels=args.hidden,
+                      out_channels=1,
+                      num_layers=args.layers, )
     criterion = torch.nn.BCEWithLogitsLoss()
 
     test_accs = []

@@ -4,7 +4,6 @@ import torch
 from torch_geometric.typing import NodeType, EdgeType, Adj
 from .my_sage_conv import MySAGEConv
 from torch import Tensor, nn
-from .const import CONST
 
 
 class HeteroConv(nn.Module):
@@ -36,65 +35,6 @@ class HeteroConv(nn.Module):
 
 
 class HeteroGNN(nn.Module):
-    def __init__(self,
-                 feature_in_channels: int,
-                 aggr_in_channels: int,
-                 hidden_channels: int,
-                 out_channels: int,
-                 num_layers: int,
-                 feature_encode: str):
-        super().__init__()
-
-        assert feature_encode in ['mean']
-        self.feature_encode = feature_encode
-        self.encoder = nn.ModuleDict({k: nn.Linear(v, feature_in_channels) for k, v in CONST.items()})
-
-        self.convs = nn.ModuleList()
-        self.convs.append(HeteroConv({
-            ('clients', 'to', 'aggregator'): MySAGEConv((feature_in_channels, aggr_in_channels), hidden_channels),
-            ('aggregator', 'to', 'clients'): MySAGEConv((aggr_in_channels, feature_in_channels), hidden_channels),
-        }))
-        for _ in range(num_layers - 1):
-            conv = HeteroConv({
-                ('clients', 'to', 'aggregator'): MySAGEConv((hidden_channels, hidden_channels), hidden_channels),
-                ('aggregator', 'to', 'clients'): MySAGEConv((hidden_channels, hidden_channels), hidden_channels),
-            })
-            self.convs.append(conv)
-
-        self.lin = nn.Linear(hidden_channels, out_channels)
-        self.nonlinear = nn.LeakyReLU(negative_slope=0.1, inplace=False)
-
-    def forward(self, x_dict, edge_index_dict):
-        client_features = 0. if self.feature_encode == 'mean' else []
-        for k, v in x_dict.items():
-            k = '_'.join(k.split('.'))
-            if k in CONST:
-                feature = self.encoder[k](v.reshape(v.shape[0], -1))
-                if self.feature_encode == 'mean':
-                    client_features += feature
-                else:
-                    client_features.append(feature)
-        if self.feature_encode == 'mean':
-            client_features /= len(x_dict)
-        else:
-            client_features = torch.cat(client_features, dim=0)
-
-        x_dict['clients'] = client_features
-
-        for conv in self.convs:
-            x_dict = conv(x_dict, edge_index_dict)
-            x_dict = {key: self.nonlinear(x) for key, x in x_dict.items()}
-        return self.lin(x_dict['clients']).squeeze(1)
-
-    def reset_parameters(self):
-        for conv in self.encoder.values():
-            conv.reset_parameters()
-        for conv in self.convs:
-            conv.reset_parameters()
-        self.lin.reset_parameters()
-
-
-class HeteroGNNHomofeatures(nn.Module):
     def __init__(self,
                  feature_in_channels: int,
                  aggr_in_channels: int,
