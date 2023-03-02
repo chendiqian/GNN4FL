@@ -2,4 +2,5 @@ datasets
 .idea
 *checkpoint*
 __pycache__
+logs
 .DS_Store
