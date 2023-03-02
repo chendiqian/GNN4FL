@@ -9,7 +9,7 @@ class MNIST_CNN(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(16, 16, 3)
         self.fc1 = nn.Linear(400, 64)
-        self.fc2 = nn.Linear(64, 10)
+        self.fc2 = nn.Linear(64, 10, bias=False)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
