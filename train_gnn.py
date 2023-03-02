@@ -24,6 +24,7 @@ def args_parser():
     parser.add_argument('--hidden', type=int, default=128)
     parser.add_argument('--layers', type=int, default=3)
     parser.add_argument('--in_feature', type=int, default=32)
+    parser.add_argument('--dropout', type=float, default=0.5)
     return parser.parse_args()
 
 
@@ -48,7 +49,8 @@ if __name__ == '__main__':
                       aggr_in_channels=1,
                       hidden_channels=args.hidden,
                       out_channels=1,
-                      num_layers=args.layers, )
+                      num_layers=args.layers,
+                      dropout=args.dropout)
     criterion = torch.nn.BCEWithLogitsLoss()
 
     test_accs = []

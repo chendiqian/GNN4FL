@@ -23,6 +23,7 @@ def args_parser():
     parser.add_argument('--hidden', type=int, default=128)
     parser.add_argument('--layers', type=int, default=3)
     parser.add_argument('--in_feature', type=int, default=32)
+    parser.add_argument('--dropout', type=float, default=0.5)
     return parser.parse_args()
 
 
@@ -46,7 +47,8 @@ if __name__ == '__main__':
     model = MLP(in_feature=args.in_feature,
                 hidden=args.hidden,
                 layers=args.layers,
-                num_classes=1)
+                num_classes=1,
+                dropout=args.dropout)
     criterion = torch.nn.BCEWithLogitsLoss()
 
     test_accs = []

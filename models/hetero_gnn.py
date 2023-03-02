@@ -40,9 +40,11 @@ class HeteroGNN(nn.Module):
                  aggr_in_channels: int,
                  hidden_channels: int,
                  out_channels: int,
-                 num_layers: int):
+                 num_layers: int,
+                 dropout: float):
         super().__init__()
 
+        self.drop = dropout
         self.convs = nn.ModuleList()
         self.convs.append(HeteroConv({
             ('clients', 'to', 'aggregator'): MySAGEConv((feature_in_channels, aggr_in_channels), hidden_channels),
@@ -62,6 +64,7 @@ class HeteroGNN(nn.Module):
         for conv in self.convs:
             x_dict = conv(x_dict, edge_index_dict)
             x_dict = {key: self.nonlinear(x) for key, x in x_dict.items()}
+            x_dict = {key: torch.nn.functional.dropout(x, p=self.drop, training=self.training) for key, x in x_dict.items()}
         return self.lin(x_dict['clients']).squeeze(1)
 
     def reset_parameters(self):
