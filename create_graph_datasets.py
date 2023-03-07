@@ -43,7 +43,8 @@ if __name__ == '__main__':
     cnn = MNIST_CNN()
     criterion = torch.nn.CrossEntropyLoss()
 
-    root = f'./{args.root}/GraphDatasetsMPG{args.modelsPergraph}_APG{args.aggrPergraph}_MPA{args.modeslPeraggr}'
+    root = f'./{args.root}/GraphDatasetsMPG{args.modelsPergraph}_APG{args.aggrPergraph}' \
+           f'_MPA{args.modeslPeraggr}_steps{args.ascent_steps}_rate{args.perturb_rate}'
     if args.exclusive:
         root += 'Exclusive'
     if not os.path.isdir(root):
