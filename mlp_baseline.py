@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from sklearn.metrics import f1_score
 
 from customed_datasets.graph_datasets import HeteroGraphDataset
 from models.mlp import MLP
@@ -52,6 +53,7 @@ if __name__ == '__main__':
     criterion = torch.nn.BCEWithLogitsLoss()
 
     test_accs = []
+    test_f1s = []
     for _ in range(args.runs):
         model.reset_parameters()
         optimizer = torch.optim.Adam(model.parameters(), lr=1.e-3)
@@ -61,7 +63,8 @@ if __name__ == '__main__':
         for epoch in pbar:  # loop over the dataset multiple times
             losses = 0.
             counts = 0
-            corrects = 0
+            labels = []
+            preds = []
             model.train()
             for i, (data, label) in enumerate(train_loader):
                 # get the inputs; data is a list of [inputs, labels]
@@ -76,25 +79,35 @@ if __name__ == '__main__':
 
                 losses += loss.item() * label.shape[0]
                 counts += label.shape[0]
-                preds = (outputs > 0.).detach().to(torch.float)
-                corrects += (preds == label).sum()
+                pred = (outputs > 0.).detach().to(torch.float)
+                labels.append(label)
+                preds.append(pred)
 
             losses /= counts
-            train_acc = corrects / counts
+            preds = torch.cat(preds, dim=0)
+            labels = torch.cat(labels, dim=0)
+            train_acc = (preds == labels).sum().item() / labels.shape[0]
+            train_f1 = f1_score(labels.numpy(), preds.numpy())
 
             model.eval()
-            val_acc = mlp_validation(val_loader, model)
+            preds, labels = mlp_validation(val_loader, model)
+            val_acc = (preds == labels).sum().item() / labels.shape[0]
+            val_f1 = f1_score(labels.numpy(), preds.numpy())
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
                 best_model_dict = deepcopy(model.state_dict())
 
-            pbar.set_postfix({'loss': losses, 'train_acc': train_acc, 'val_acc': val_acc})
+            pbar.set_postfix({'train_acc': train_acc, 'val_acc': val_acc, 'train_f1': train_f1, 'val f1': val_f1})
 
         model.load_state_dict(best_model_dict)
         model.eval()
-        test_acc = mlp_validation(test_loader, model)
-        print(f'test acc: {test_acc}')
-        test_accs.append(test_acc.item())
+        preds, labels = mlp_validation(test_loader, model)
+        test_acc = (preds == labels).sum().item() / labels.shape[0]
+        test_f1 = f1_score(labels.numpy(), preds.numpy())
+        print(f'test acc: {test_acc}, test f1: {test_f1}')
+        test_accs.append(test_acc)
+        test_f1s.append(test_f1)
 
-    print(f'mean: {np.mean(test_accs)} ± std: {np.std(test_accs)}')
+    print(f'acc mean: {np.mean(test_accs)} ± std: {np.std(test_accs)}')
+    print(f'f1 mean: {np.mean(test_f1s)} ± std: {np.std(test_f1s)}')

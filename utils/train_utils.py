@@ -21,24 +21,24 @@ def mnist_validation(dataloader: DataLoader,
 
 @torch.no_grad()
 def gnn_validation(dataloader, model):
-    corrects = 0
-    counts = 0
+    preds = []
+    labels = []
     for i, data in enumerate(dataloader):
         outputs = model(data.x_dict, data.edge_index_dict)
-        preds = (outputs > 0.).detach().to(torch.float)
-        corrects += (preds == data.y).sum()
-        counts += data.y.shape[0]
+        pred = (outputs > 0.).detach().to(torch.float)
+        preds.append(pred)
+        labels.append(data.y)
 
-    return corrects / counts
+    return torch.cat(preds, dim=0), torch.cat(labels, dim=0)
 
 
 @torch.no_grad()
 def mlp_validation(dataloader, model):
-    corrects = 0
-    counts = 0
+    preds = []
+    labels = []
     for i, (data, label) in enumerate(dataloader):
         outputs = model(data)
-        preds = (outputs > 0.).detach().to(torch.float)
-        corrects += (preds == label).sum()
-        counts += label.shape[0]
-    return corrects / counts
+        pred = (outputs > 0.).detach().to(torch.float)
+        preds.append(pred)
+        labels.append(label)
+    return torch.cat(preds, dim=0), torch.cat(labels, dim=0)
