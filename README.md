@@ -18,6 +18,9 @@ Therefore, we train a CNN with a simple architecture. The example script is e.g.
 
 which will give a set of models trained on different digits with different initialization seeds. The trained models will be used as a dataset.
 
+For FEMNIST dataset, we use the [LEAF](https://github.com/TalwalkarLab/leaf) repo, please see to the official repo and create FEMNIST dataset. 
+After that, simply copy the `train` and `test` folder under `./datasets/FEMNIST`.
+
 ## Graph dataset creation
 For each graph, we have several models as parameter nodes, and several virtual aggregator nodes. Run e.g.
 

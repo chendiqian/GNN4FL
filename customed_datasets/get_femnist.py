@@ -1,72 +1,109 @@
-# all credits to https://github.com/tao-shen/FEMNIST_pytorch/blob/master/femnist.py
-
-from torchvision.datasets import MNIST, utils
-from PIL import Image
-import os.path
+import json
+import os
+from collections import defaultdict
+import numpy as np
 import torch
+from torch_geometric.data import InMemoryDataset
 
 
-class FEMNIST(MNIST):
+class FEMNIST(InMemoryDataset):
     """
     This dataset is derived from the Leaf repository
     (https://github.com/TalwalkarLab/leaf) pre-processing of the Extended MNIST
     dataset, grouping examples by writer. Details about Leaf were published in
     "LEAF: A Benchmark for Federated Settings" https://arxiv.org/abs/1812.01097.
     """
-    resources = [
-        ('https://raw.githubusercontent.com/tao-shen/FEMNIST_pytorch/master/femnist.tar.gz',
-         '59c65cec646fc57fe92d27d83afdf0ed')]
 
-    def __init__(self, root, train=True, transform=None, target_transform=None,
-                 download=False):
-        super(MNIST, self).__init__(root, transform=transform,
-                                    target_transform=target_transform)
+    def __init__(self, root='./datasets/FEMNIST', train=True, transform=None, pre_transform=None, pre_filter=None):
+        super(FEMNIST, self).__init__(root, transform, pre_transform, pre_filter)
+        self.transform = transform
+        self.pre_transform = pre_transform
         self.train = train
+        self.data, self.labels, self.dic_users = torch.load(os.path.join(self.processed_dir,
+                                                                         'train.pt' if train else 'test.pt'))
 
-        if download:
-            self.download()
-
-        if not self._check_exists():
-            raise RuntimeError('Dataset not found.' +
-                               ' You can use download=True to download it')
-        if self.train:
-            data_file = self.training_file
-        else:
-            data_file = self.test_file
-
-        self.data, self.targets, self.users_index = torch.load(os.path.join(self.processed_folder, data_file))
-
-    def _check_exists(self) -> bool:
-        return os.path.isfile(os.path.join(self.processed_folder, self.training_file)) and \
-            os.path.isfile(os.path.join(self.processed_folder, self.test_file))
+    @property
+    def processed_file_names(self):
+        return ['train.pt', 'test.pt']
 
     def __getitem__(self, index):
-        img, target = self.data[index], int(self.targets[index])
-        img = Image.fromarray(img.numpy(), mode='F')
-        if self.transform is not None:
-            img = self.transform(img)
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-        return img, target
+        return self.data[index], self.labels[index]
 
-    def download(self):
-        """Download the FEMNIST data if it doesn't exist in processed_folder already."""
-        import shutil
+    def __len__(self):
+        return len(self.data)
 
-        if self._check_exists():
-            return
+    def get_client_dic(self):
+        return self.dic_users
 
-        if not os.path.exists(self.raw_folder):
-            os.makedirs(self.raw_folder)
-        if not os.path.exists(self.processed_folder):
-            os.makedirs(self.processed_folder)
+    def process(self):
+        train_clients, train_groups, train_data_temp, test_data_temp = read_data("./datasets/FEMNIST/train",
+                                                                                 "./datasets/FEMNIST/test")
+        dic_users = {}
+        train_data_x = []
+        train_data_y = []
+        for i in range(len(train_clients)):
+            dic_users[i] = set()
+            l = len(train_data_x)
+            cur_x = train_data_temp[train_clients[i]]['x']
+            cur_y = train_data_temp[train_clients[i]]['y']
+            for j in range(len(cur_x)):
+                dic_users[i].add(j + l)
+                data = np.array(cur_x[j]).reshape(1, 28, 28)
+                data = torch.from_numpy((0.5 - data)/0.5).float()
+                train_data_x.append(data)
+                train_data_y.append(cur_y[j])
+        data = train_data_x
+        label = train_data_y
 
-        # download files
-        for url, md5 in self.resources:
-            filename = url.rpartition('/')[2]
-            utils.download_and_extract_archive(url, download_root=self.raw_folder, filename=filename, md5=md5)
+        torch.save((torch.stack(data, dim=0), torch.tensor(label), dic_users), os.path.join(self.processed_dir, 'train.pt'))
 
-        # process and save as torch files
-        print('Processing...')
-        shutil.move(os.path.join(self.raw_folder, self.training_file), self.processed_folder)
-        shutil.move(os.path.join(self.raw_folder, self.test_file), self.processed_folder)
+        test_data_x = []
+        test_data_y = []
+        for i in range(len(train_clients)):
+            cur_x = test_data_temp[train_clients[i]]['x']
+            cur_y = test_data_temp[train_clients[i]]['y']
+            for j in range(len(cur_x)):
+                data = np.array(cur_x[j]).reshape(1, 28, 28)
+                data = torch.from_numpy((0.5 - data) / 0.5).float()
+                test_data_x.append(data)
+                test_data_y.append(cur_y[j])
+        data = test_data_x
+        label = test_data_y
+
+        torch.save((torch.stack(data, dim=0), torch.tensor(label), None), os.path.join(self.processed_dir, 'test.pt'))
+
+
+def read_dir(data_dir):
+    clients = []
+    groups = []
+    data = defaultdict(lambda: None)
+
+    files = os.listdir(data_dir)
+    files = [f for f in files if f.endswith('.json')]
+    for f in files:
+        file_path = os.path.join(data_dir, f)
+        with open(file_path, 'r') as inf:
+            cdata = json.load(inf)
+        clients.extend(cdata['users'])
+        if 'hierarchies' in cdata:
+            groups.extend(cdata['hierarchies'])
+        data.update(cdata['user_data'])
+
+    clients = list(sorted(data.keys()))
+    return clients, groups, data
+
+
+def read_data(train_data_dir, test_data_dir):
+    train_clients, train_groups, train_data = read_dir(train_data_dir)
+    test_clients, test_groups, test_data = read_dir(test_data_dir)
+
+    assert train_clients == test_clients
+    assert train_groups == test_groups
+
+    return train_clients, train_groups, train_data, test_data
+
+
+def get_femnist():
+    train_dataset = FEMNIST(train=True)
+    val_dataset = FEMNIST(train=False)
+    return train_dataset, val_dataset
