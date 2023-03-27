@@ -4,6 +4,7 @@ import random
 import copy
 from tqdm import tqdm
 
+
 def fed_avg(models: Dict[str, torch.Tensor]):
     avg_weights = {}
     for k, v in models.items():
@@ -16,6 +17,42 @@ def fed_sum(models: Dict[str, torch.Tensor]):
     for k, v in models.items():
         avg_weights[k] = torch.sum(v, dim=0)
     return avg_weights
+
+
+class LocalUpdate(object):
+    def __init__(self, args, dataloader):
+        self.args = args
+        self.loss_func = torch.nn.CrossEntropyLoss()
+        self.ldr_train = dataloader
+
+    def train(self, net):
+        net.train()
+        # train and update
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=self.args.momentum)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=self.args.lr_decay)
+
+        epoch_loss = []
+        pbar = tqdm(range(self.args.local_epoch))
+        for _ in pbar:
+            batch_loss = []
+            counts = 0
+            corrects = 0
+            for batch_idx, (images, labels) in enumerate(self.ldr_train):
+                # images, labels = images.to(self.args.device), labels.to(self.args.device)
+                net.zero_grad()
+                outputs = net(images)
+                loss = self.loss_func(outputs, labels)
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+
+                counts += images.shape[0]
+                corrects += (outputs.argmax(1) == labels).sum().item()
+
+                batch_loss.append(loss.item())
+            epoch_loss.append(sum(batch_loss)/len(batch_loss))
+            pbar.set_postfix({'train loss': epoch_loss[-1], 'train acc': corrects / counts})
+        return net.state_dict(), sum(epoch_loss) / len(epoch_loss), scheduler.get_last_lr()[0]
 
 
 def package_loss(models: Dict[str, torch.Tensor],
