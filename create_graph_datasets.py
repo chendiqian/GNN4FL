@@ -1,14 +1,16 @@
 import argparse
 import os
+
 import yaml
 import random
 
 import torch
 from tqdm import tqdm
-import numpy as np
 
 from customed_datasets.get_mnist import get_mnist
+from customed_datasets.get_femnist import get_femnist
 from models.mnist_cnn import MNIST_CNN
+from models.femnist_cnn import FEMNIST_CNN
 from utils.train_utils import mnist_validation
 from customed_datasets.weight_datasets import DefaultTransform, AdditiveNoise, SignFlip
 from utils.fl_utils import fed_avg, make_gradient_ascent, make_all_to_label
@@ -37,13 +39,17 @@ def args_parser():
 
 if __name__ == '__main__':
     args = args_parser()
-    train_dataset, train_labels, val_dataset, _ = get_mnist()
+    if args.cnn_db.lower().startswith('femnist'):
+        train_dataset, val_dataset = get_femnist()
+        cnn = FEMNIST_CNN()
+    else:
+        train_dataset, _, val_dataset, _ = get_mnist()
+        cnn = MNIST_CNN()
+
     val_loader_full = torch.utils.data.DataLoader(val_dataset, batch_size=256, shuffle=True)
-    num_classes = max(train_labels) + 1
-    cnn = MNIST_CNN()
     criterion = torch.nn.CrossEntropyLoss()
 
-    root = f'./{args.root}/GraphDatasetsMPG{args.modelsPergraph}_APG{args.aggrPergraph}' \
+    root = f'./{args.root}/{cnn}GraphDatasetsMPG{args.modelsPergraph}_APG{args.aggrPergraph}' \
            f'_MPA{args.modeslPeraggr}_steps{args.ascent_steps}_rate{args.perturb_rate}'
     if args.exclusive:
         root += 'Exclusive'
@@ -72,12 +78,12 @@ if __name__ == '__main__':
             perturb = SignFlip(args.perturb_rate)
         elif args.model_perturb == 'grad_ascent':
             perturb = make_gradient_ascent(torch.utils.data.DataLoader(train_dataset, batch_size=1024, shuffle=True),
-                                           MNIST_CNN(),
+                                           cnn,
                                            args.ascent_steps,
                                            args.perturb_rate)
         elif args.model_perturb == 'label':
             perturb = make_all_to_label(torch.utils.data.DataLoader(train_dataset, batch_size=1024, shuffle=True),
-                                        MNIST_CNN(),
+                                        cnn,
                                         args.ascent_steps,
                                         args.perturb_rate)
         else:

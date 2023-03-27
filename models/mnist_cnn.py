@@ -29,3 +29,6 @@ class MNIST_CNN(nn.Module):
         self.conv2.reset_parameters()
         self.fc1.reset_parameters()
         self.fc2.reset_parameters()
+
+    def __repr__(self):
+        return 'MNISTCNN'
