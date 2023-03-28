@@ -1,18 +1,26 @@
 import argparse
 from copy import deepcopy
 import random
+import os
+import yaml
+from tqdm import tqdm
 
 import numpy as np
 import torch
 
 from customed_datasets.get_femnist import get_femnist
+from customed_datasets.weight_datasets import DefaultTransform, AdditiveNoise, SignFlip
 from models.femnist_cnn import FEMNIST_CNN
 from utils.train_utils import mnist_validation
-from utils.fl_utils import LocalUpdate, fed_avg
+from utils.fl_utils import LocalUpdate, fed_avg, make_gradient_ascent, make_all_to_label
+from customed_datasets.graph_datasets import linear_mapping
+from torch_geometric.data import HeteroData
+
 
 # some training dynamics are taken from https://github.com/wenzhu23333/Federated-Learning
 def args_parser():
     parser = argparse.ArgumentParser(description='hyper params for creating graph dataset')
+    # params for CNN training
     parser.add_argument('--lr', type=float, default=0.01, help="learning rate")
     parser.add_argument('--lr_decay', type=float, default=0.995, help="learning rate decay each round")
     parser.add_argument('--momentum', type=float, default=0.5, help="SGD momentum (default: 0.5)")
@@ -21,6 +29,18 @@ def args_parser():
     parser.add_argument('--global_epoch', type=int, default=50)
     parser.add_argument('--batchsize', type=int, default=64)
     parser.add_argument('--seed', type=int, default=24)
+    # params for GNN creation
+    parser.add_argument('--create_gnn', action='store_true')
+    parser.add_argument('--root', type=str, default='./datasets')
+    parser.add_argument('--aggrPergraph', type=int, default=2, help='number of aggr nodes per graph')
+    parser.add_argument('--modeslPeraggr', type=int, default=2, help='number of param nodes per aggr')
+    parser.add_argument('--exclusive', default=False, action='store_true',
+                        help='whether one model is used ONCE for aggregation')
+    parser.add_argument('--model_perturb', type=str, default=None, help='how to perturb data')
+    parser.add_argument('--perturb_rate', type=float, default=0.3, help='ratio of models perturbed')
+    parser.add_argument('--noise_scale', type=float, default=0.3, help='Gauss(mean=0, std=params.std() * noise_scale)')
+    parser.add_argument('--ascent_steps', type=int, default=1)
+    parser.add_argument('--target_dim', type=int, default=32, help='number of hidden dimensions for projection')
     return parser.parse_args()
 
 
@@ -35,29 +55,35 @@ if __name__ == '__main__':
     cnn.reset_parameters(args.seed)
     cnn.train()
 
-    weights_global = cnn.state_dict()
+    avg_weights_global = cnn.state_dict()
 
-    # root = './datasets/FEMNIST_CNN'
-    # if not os.path.isdir(root):
-    #     os.mkdir(root)
-    # root = os.path.join(root, 'raw')
-    # if not os.path.isdir(root):
-    #     os.mkdir(root)
-    # if not os.path.isdir(os.path.join(root, str(args.seed))):
-    #     os.mkdir(os.path.join(root, str(args.seed)))
+    root = f'./{args.root}/{cnn}GraphDatasetsMPG{args.models_per_epoch}_APG{args.aggrPergraph}' \
+           f'_MPA{args.modeslPeraggr}_steps{args.ascent_steps}_rate{args.perturb_rate}'
+    if args.exclusive:
+        root += 'Exclusive'
+    if not os.path.isdir(root):
+        os.mkdir(root)
+
+    with open(os.path.join(root, 'config.yml'), 'w') as outfile:
+        yaml.dump(args, outfile, default_flow_style=False)
+
+    root = os.path.join(root, 'raw')
+    if not os.path.isdir(root):
+        os.mkdir(root)
 
     dict_user = train_dataset.get_client_dic()
     id_users = list(dict_user.keys())
 
     acc_test = []
     learning_rate = [args.lr for i in range(len(id_users))]
-    best_val_acc = 0.
     for epoch in range(args.global_epoch):
+        print(f"=============== Training CNN ================")
+        cnn.load_state_dict(avg_weights_global)
         if args.models_per_epoch >= len(id_users):
             selected_idx = list(range(len(id_users)))
         else:
             selected_idx = random.sample(list(range(len(id_users))), args.models_per_epoch)
-        weights_locals, loss_locals = [], []
+        weights_locals = []
         for i in selected_idx:
             id_user = id_users[i]
             args.lr = learning_rate[id_user]
@@ -67,23 +93,85 @@ if __name__ == '__main__':
                                                        batch_size=args.batchsize,
                                                        shuffle=True)
             local = LocalUpdate(args=args, dataloader=train_loader)
-            w, loss, curLR = local.train(net=deepcopy(cnn))
+            w, _, curLR = local.train(net=deepcopy(cnn))
             learning_rate[i] = curLR
             weights_locals.append(deepcopy(w))
-            loss_locals.append(deepcopy(loss))
 
-        weights_locals = torch.utils.data.default_collate(weights_locals)
-        # update global weights
-        weights_global = fed_avg(weights_locals)
-        # copy weight to net_glob
-        cnn.load_state_dict(weights_global)
+        aggr_weights_locals = torch.utils.data.default_collate(weights_locals)
+        avg_weights_global = fed_avg(aggr_weights_locals)   # aggregated clean weights
+        cnn.load_state_dict(avg_weights_global)
 
         # print accuracy
         cnn.eval()
         val_acc = mnist_validation(val_loader, cnn)
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_model = deepcopy(cnn.state_dict())
-
         print(f'global epoch:, {epoch}, val acc: {val_acc}')
+
+        if not args.create_gnn:
+            continue
+
+        print(f"=============== Perturbing model weights ================")
+        if args.model_perturb is None:
+            perturb = DefaultTransform()
+        elif args.model_perturb == 'noise':
+            perturb = AdditiveNoise(args.perturb_rate, args.noise_scale)
+        elif args.model_perturb == 'sign':
+            perturb = SignFlip(args.perturb_rate)
+        elif args.model_perturb == 'grad_ascent':
+            perturb = make_gradient_ascent(torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True),
+                                           cnn,
+                                           args.ascent_steps,
+                                           args.perturb_rate)
+        elif args.model_perturb == 'label':
+            perturb = make_all_to_label(torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True),
+                                        cnn,
+                                        args.ascent_steps,
+                                        args.perturb_rate)
+        else:
+            raise NotImplementedError
+
+        perturb_models = [perturb(deepcopy(m)) for m in weights_locals]
+        weights, labels = torch.utils.data.default_collate(perturb_models)
+
+        print(f"=============== Creating graphs ================")
+
+        aggregated_val_accs = []
+        if args.exclusive:
+            assert args.aggrPergraph * args.modeslPeraggr <= args.models_per_epoch, "models sent to more than one aggr!"
+            edges_rows = torch.randperm(args.models_per_epoch)[:args.aggrPergraph * args.modeslPeraggr]
+        else:
+            edges_rows = torch.randint(0, args.models_per_epoch, (args.aggrPergraph * args.modeslPeraggr,))
+        edges_cols = torch.repeat_interleave(torch.arange(args.aggrPergraph), args.modeslPeraggr)
+        pbar = tqdm(range(args.aggrPergraph))
+        for aggr_idx in pbar:
+            selected_model_idx = edges_rows[aggr_idx * args.modeslPeraggr: (aggr_idx + 1) * args.modeslPeraggr]
+
+            selected_weights = {k: w[selected_model_idx, ...] for k, w in weights.items()}
+
+            agg_weights = fed_avg(selected_weights)
+            cnn.load_state_dict(agg_weights)
+            cnn.eval()
+            acc = mnist_validation(val_loader, cnn)
+            aggregated_val_accs.append(acc)
+
+            perturb = 1 - labels[selected_model_idx].sum().item() / len(selected_model_idx)
+            pbar.set_postfix({'acc': acc, 'perturb rate': perturb})
+
+        edge_index = torch.vstack([edges_rows, edges_cols])
+        data = HeteroData(aggregator={'x': torch.tensor(aggregated_val_accs)[:, None]},
+                          clients__aggregator={'edge_index': edge_index},
+                          aggregator__clients={'edge_index': edge_index[torch.tensor([1, 0])]},
+                          y=labels)
+
+        # linear mapping
+        features = linear_mapping(weights, args.target_dim)
+        g = HeteroData(aggregator={'x': torch.tensor(aggregated_val_accs)[:, None]},
+                       clients={'x': features},
+                       clients__aggregator={'edge_index': edge_index},
+                       aggregator__clients={'edge_index': edge_index[torch.tensor([1, 0])]},
+                       y=labels
+                       )
+
+        files = os.listdir(root)
+        files = [f for f in files if f.endswith('.pt')]
+        torch.save(g, os.path.join(root, f'model{len(files)}.pt'))
