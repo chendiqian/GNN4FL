@@ -1,5 +1,6 @@
 import argparse
 from copy import deepcopy
+import random
 
 import numpy as np
 import torch
@@ -15,6 +16,7 @@ def args_parser():
     parser.add_argument('--lr', type=float, default=0.01, help="learning rate")
     parser.add_argument('--lr_decay', type=float, default=0.995, help="learning rate decay each round")
     parser.add_argument('--momentum', type=float, default=0.5, help="SGD momentum (default: 0.5)")
+    parser.add_argument('--models_per_epoch', type=int, default=20)
     parser.add_argument('--local_epoch', type=int, default=5)
     parser.add_argument('--global_epoch', type=int, default=50)
     parser.add_argument('--batchsize', type=int, default=64)
@@ -51,8 +53,13 @@ if __name__ == '__main__':
     learning_rate = [args.lr for i in range(len(id_users))]
     best_val_acc = 0.
     for epoch in range(args.global_epoch):
+        if args.models_per_epoch >= len(id_users):
+            selected_idx = list(range(len(id_users)))
+        else:
+            selected_idx = random.sample(list(range(len(id_users))), args.models_per_epoch)
         weights_locals, loss_locals = [], []
-        for i, id_user in enumerate(id_users):
+        for i in selected_idx:
+            id_user = id_users[i]
             args.lr = learning_rate[id_user]
             train_subset = torch.utils.data.Subset(train_dataset,
                                                    np.array(list(dict_user[id_user])))
