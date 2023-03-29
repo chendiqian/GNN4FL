@@ -159,13 +159,15 @@ if __name__ == '__main__':
                            )
 
             reliable_model_idx = torch.where(model(g.x_dict, g.edge_index_dict) > 0.)[0]
+            if len(reliable_model_idx) == 0:  # no reliable
+                pass
             selected_weights = {k: w[reliable_model_idx] for k, w in perturbed_weights.items()}
-            if len(reliable_model_idx) == 1:
-                selected_weights = {k: w[None] for k, w in selected_weights.items()}
+            if len(reliable_model_idx) > 1:
+                selected_weights = fed_avg(selected_weights)
+            avg_weights_global = selected_weights
         else:
-            selected_weights = perturbed_weights
+            avg_weights_global = fed_avg(perturbed_weights)
 
-        avg_weights_global = fed_avg(selected_weights)  # aggregated clean weights
         cnn.load_state_dict(avg_weights_global)
 
         # print accuracy
