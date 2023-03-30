@@ -140,8 +140,8 @@ if __name__ == '__main__':
                 acc = mnist_validation(val_loader, cnn)
                 aggregated_val_accs.append(acc)
 
-                perturb = 1 - labels[selected_model_idx].sum().item() / len(selected_model_idx)
-                pbar.set_postfix({'acc': acc, 'perturb rate': perturb})
+                perturb_rate = 1 - labels[selected_model_idx].sum().item() / len(selected_model_idx)
+                pbar.set_postfix({'acc': acc, 'perturb rate': perturb_rate})
 
             edge_index = torch.vstack([edges_rows, edges_cols])
             data = HeteroData(aggregator={'x': torch.tensor(aggregated_val_accs)[:, None]},
@@ -159,6 +159,7 @@ if __name__ == '__main__':
                            )
 
             reliable_model_idx = torch.where(model(g.x_dict, g.edge_index_dict) > 0.)[0]
+            print(f'reliable idx: {reliable_model_idx}')
             if len(reliable_model_idx) == 0:  # no reliable
                 pass
             selected_weights = {k: w[reliable_model_idx] for k, w in perturbed_weights.items()}

@@ -54,6 +54,10 @@ if __name__ == '__main__':
                       dropout=args.dropout)
     criterion = torch.nn.BCEWithLogitsLoss()
 
+    root = './trained_gnns'
+    if not os.path.isdir(root):
+        os.mkdir(root)
+
     test_accs = []
     test_f1s = []
     for r in range(args.runs):
@@ -122,6 +126,8 @@ if __name__ == '__main__':
 
         writer.flush()
         writer.close()
+
+        torch.save(best_model_dict, os.path.join(root, f'gnn{r}.pt'))
 
     print(f'acc mean: {np.mean(test_accs)} ± std: {np.std(test_accs)}')
     print(f'f1 mean: {np.mean(test_f1s)} ± std: {np.std(test_f1s)}')
