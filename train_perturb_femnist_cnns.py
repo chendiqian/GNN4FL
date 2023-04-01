@@ -2,7 +2,8 @@ import argparse
 from copy import deepcopy
 import random
 from tqdm import tqdm
-
+from torch.utils.tensorboard import SummaryWriter
+import os
 import numpy as np
 import torch
 
@@ -50,6 +51,13 @@ def args_parser():
 
 if __name__ == '__main__':
     args = args_parser()
+    tensorboard_dir = f'./logs/train_femnist_perturb{args.model_perturb}'
+    if not os.path.isdir('logs'):
+        os.mkdir('logs')
+    if not os.path.isdir(tensorboard_dir):
+        os.mkdir(tensorboard_dir)
+    folders = os.listdir(tensorboard_dir)
+    writer = SummaryWriter(os.path.join(tensorboard_dir, f'{len(folders)}'))
     train_dataset, val_dataset = get_femnist()
     val_loader = torch.utils.data.DataLoader(val_dataset,
                                              batch_size=args.batchsize,
@@ -176,3 +184,7 @@ if __name__ == '__main__':
         val_acc = mnist_validation(val_loader, cnn)
 
         print(f'global epoch:, {epoch}, val acc: {val_acc}')
+        writer.add_scalar('val acc', val_acc, epoch)
+
+    writer.flush()
+    writer.close()

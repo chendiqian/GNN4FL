@@ -4,6 +4,7 @@ import random
 import os
 import yaml
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
 import torch
@@ -46,6 +47,13 @@ def args_parser():
 
 if __name__ == '__main__':
     args = args_parser()
+    tensorboard_dir = f'./logs/train_femnist_perturb{args.model_perturb}'
+    if not os.path.isdir('logs'):
+        os.mkdir('logs')
+    if not os.path.isdir(tensorboard_dir):
+        os.mkdir(tensorboard_dir)
+    folders = os.listdir(tensorboard_dir)
+    writer = SummaryWriter(os.path.join(tensorboard_dir, f'{len(folders)}'))
     train_dataset, val_dataset = get_femnist()
     val_loader = torch.utils.data.DataLoader(val_dataset,
                                              batch_size=args.batchsize,
@@ -56,6 +64,25 @@ if __name__ == '__main__':
     cnn.train()
 
     avg_weights_global = cnn.state_dict()
+
+    if args.model_perturb is None:
+        perturb = DefaultTransform()
+    elif args.model_perturb == 'noise':
+        perturb = AdditiveNoise(args.perturb_rate, args.noise_scale)
+    elif args.model_perturb == 'sign':
+        perturb = SignFlip(args.perturb_rate)
+    elif args.model_perturb == 'grad_ascent':
+        perturb = make_gradient_ascent(torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True),
+                                       cnn,
+                                       args.ascent_steps,
+                                       args.perturb_rate)
+    elif args.model_perturb == 'label':
+        perturb = make_all_to_label(torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True),
+                                    cnn,
+                                    args.ascent_steps,
+                                    args.perturb_rate)
+    else:
+        raise NotImplementedError
 
     root = f'./{args.root}/{cnn}GraphDatasetsMPG{args.models_per_epoch}_APG{args.aggrPergraph}' \
            f'_MPA{args.modeslPeraggr}_steps{args.ascent_steps}_rate{args.perturb_rate}'
@@ -74,7 +101,7 @@ if __name__ == '__main__':
     dict_user = train_dataset.get_client_dic()
     id_users = list(dict_user.keys())
 
-    acc_test = []
+    best_acc = 0.
     learning_rate = [args.lr for i in range(len(id_users))]
     for epoch in range(args.global_epoch):
         print(f"=============== Training CNN ================")
@@ -104,32 +131,16 @@ if __name__ == '__main__':
         # print accuracy
         cnn.eval()
         val_acc = mnist_validation(val_loader, cnn)
+        best_acc = max(best_acc, val_acc)
 
-        print(f'global epoch:, {epoch}, val acc: {val_acc}')
+        print(f'global epoch:, {epoch}, val acc: {val_acc}, best acc: {best_acc}')
+
+        writer.add_scalar('val acc', val_acc, epoch)
 
         if not args.create_gnn:
             continue
 
         print(f"=============== Perturbing model weights ================")
-        if args.model_perturb is None:
-            perturb = DefaultTransform()
-        elif args.model_perturb == 'noise':
-            perturb = AdditiveNoise(args.perturb_rate, args.noise_scale)
-        elif args.model_perturb == 'sign':
-            perturb = SignFlip(args.perturb_rate)
-        elif args.model_perturb == 'grad_ascent':
-            perturb = make_gradient_ascent(torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True),
-                                           cnn,
-                                           args.ascent_steps,
-                                           args.perturb_rate)
-        elif args.model_perturb == 'label':
-            perturb = make_all_to_label(torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True),
-                                        cnn,
-                                        args.ascent_steps,
-                                        args.perturb_rate)
-        else:
-            raise NotImplementedError
-
         perturb_models = [perturb(deepcopy(m)) for m in weights_locals]
         weights, labels = torch.utils.data.default_collate(perturb_models)
 
@@ -175,3 +186,6 @@ if __name__ == '__main__':
         files = os.listdir(root)
         files = [f for f in files if f.endswith('.pt')]
         torch.save(g, os.path.join(root, f'model{len(files)}.pt'))
+
+    writer.flush()
+    writer.close()
