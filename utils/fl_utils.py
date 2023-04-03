@@ -2,7 +2,6 @@ import torch
 from typing import List, Dict
 import random
 import copy
-from tqdm import tqdm
 
 
 def fed_avg(models: Dict[str, torch.Tensor]):
@@ -32,8 +31,7 @@ class LocalUpdate(object):
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=self.args.lr_decay)
 
         epoch_loss = []
-        pbar = tqdm(range(self.args.local_epoch))
-        for _ in pbar:
+        for _ in range(self.args.local_epoch):
             batch_loss = []
             counts = 0
             corrects = 0
@@ -51,7 +49,6 @@ class LocalUpdate(object):
 
                 batch_loss.append(loss.item())
             epoch_loss.append(sum(batch_loss)/len(batch_loss))
-            pbar.set_postfix({'train loss': epoch_loss[-1], 'train acc': corrects / counts})
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss), scheduler.get_last_lr()[0]
 
 

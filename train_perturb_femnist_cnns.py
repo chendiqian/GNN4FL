@@ -51,7 +51,8 @@ def args_parser():
 
 if __name__ == '__main__':
     args = args_parser()
-    tensorboard_dir = f'./logs/train_femnist_perturb{args.model_perturb}'
+    tensorboard_dir = f'./logs/train_femnist_perturb_{args.model_perturb}'
+    tensorboard_dir += '_filtered' if args.filter_models else '_nofilter'
     if not os.path.isdir('logs'):
         os.mkdir('logs')
     if not os.path.isdir(tensorboard_dir):
@@ -166,8 +167,15 @@ if __name__ == '__main__':
                            y=labels
                            )
 
-            reliable_model_idx = torch.where(model(g.x_dict, g.edge_index_dict) > 0.)[0]
-            print(f'reliable idx: {reliable_model_idx}')
+            prediction = model(g.x_dict, g.edge_index_dict)
+            reliable_model_idx = torch.where(prediction > 0.)[0].numpy()
+            perturb_idx = torch.where(prediction < 0.)[0].numpy()
+            true_reliable_idx = torch.where(labels)[0].numpy()
+            true_perturb_idx = torch.where(labels == 0)[0].numpy()
+            print(f'true pos: {np.in1d(reliable_model_idx, true_reliable_idx).sum() / len(true_reliable_idx)}'
+                  f'unfiltered: {np.in1d(reliable_model_idx, true_perturb_idx).sum() / len(true_perturb_idx)}')
+
+            # todo: this is debugging!
             if len(reliable_model_idx) == 0:  # no reliable
                 pass
             selected_weights = {k: w[reliable_model_idx] for k, w in perturbed_weights.items()}
