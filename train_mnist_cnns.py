@@ -80,7 +80,7 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     root = f'./{args.root}/{cnn}GraphDatasetsMPG{args.models_per_epoch}_APG{args.aggrPergraph}' \
-           f'_MPA{args.modeslPeraggr}_steps{args.ascent_steps}_rate{args.perturb_rate}'
+           f'_MPA{args.modeslPeraggr}_steps{args.ascent_steps}_rate{args.perturb_rate}_pert{args.model_perturb}'
     if args.exclusive:
         root += 'Exclusive'
     if not os.path.isdir(root):
