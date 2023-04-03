@@ -2,6 +2,8 @@ import torch
 from typing import List, Dict
 import random
 import copy
+from tqdm import tqdm
+import numpy as np
 
 
 def fed_avg(models: Dict[str, torch.Tensor]):
@@ -27,11 +29,12 @@ class LocalUpdate(object):
     def train(self, net):
         net.train()
         # train and update
-        optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=self.args.momentum)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=self.args.lr_decay)
+        optimizer = torch.optim.Adam(net.parameters(), lr=self.args.lr,)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.995)
 
         epoch_loss = []
-        for _ in range(self.args.local_epoch):
+        pbar = tqdm(range(self.args.local_epoch))
+        for _ in pbar:
             batch_loss = []
             counts = 0
             corrects = 0
@@ -49,6 +52,7 @@ class LocalUpdate(object):
 
                 batch_loss.append(loss.item())
             epoch_loss.append(sum(batch_loss)/len(batch_loss))
+            pbar.set_postfix({'train loss': epoch_loss[-1], 'train acc': corrects / counts})
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss), scheduler.get_last_lr()[0]
 
 
@@ -174,3 +178,11 @@ def make_all_to_label(dataloader, model, iters=1, prob=0., label=0):
 
         return model.state_dict(), 0.
     return all_to_label
+
+
+def mnist_get_client(lens, num_clients, iid=True):
+    assert iid, "Not implemented non-iid"
+    np.random.seed(42)
+    idx = np.random.permutation(lens)
+    client_dict = {i: part for i, part in enumerate(np.array_split(idx, num_clients))}
+    return client_dict
