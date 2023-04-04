@@ -160,8 +160,8 @@ if __name__ == '__main__':
             acc = mnist_validation(val_loader, cnn)
             aggregated_val_accs.append(acc)
 
-            perturb = 1 - labels[selected_model_idx].sum().item() / len(selected_model_idx)
-            pbar.set_postfix({'acc': acc, 'perturb rate': perturb})
+            perturb_rate = 1 - labels[selected_model_idx].sum().item() / len(selected_model_idx)
+            pbar.set_postfix({'acc': acc, 'perturb rate': perturb_rate})
 
         edge_index = torch.vstack([edges_rows, edges_cols])
         data = HeteroData(aggregator={'x': torch.tensor(aggregated_val_accs)[:, None]},
