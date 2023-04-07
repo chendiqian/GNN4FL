@@ -5,7 +5,6 @@ from copy import deepcopy
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from sklearn.metrics import f1_score
 
@@ -17,8 +16,7 @@ from utils.train_utils import gnn_validation
 
 def args_parser():
     parser = argparse.ArgumentParser(description='hyper params for training graph dataset')
-    parser.add_argument('--root', type=str, default='./datasets')
-    parser.add_argument('--name', type=str, required=True)
+    parser.add_argument('--root', type=str, required=True)
     parser.add_argument('--runs', type=int, default=5)
     parser.add_argument('--epoch', type=int, default=5)
     parser.add_argument('--batchsize', type=int, default=64)
@@ -32,7 +30,7 @@ def args_parser():
 if __name__ == '__main__':
     args = args_parser()
 
-    dataset = HeteroGraphDataset(os.path.join(args.root, args.name))
+    dataset = HeteroGraphDataset(os.path.join(args.root))
     train_loader = DataLoader(dataset[:int(len(dataset) * 0.8)],
                               shuffle=True,
                               batch_size=args.batchsize,
@@ -67,7 +65,6 @@ if __name__ == '__main__':
         pbar = tqdm(range(args.epoch))
         best_model_dict = None
         best_val_acc = 0.
-        writer = SummaryWriter(f'./logs/hid{args.hidden}layer{args.layers}/run{r}')
         for epoch in pbar:  # loop over the dataset multiple times
             losses = 0.
             counts = 0
@@ -109,12 +106,6 @@ if __name__ == '__main__':
 
             pbar.set_postfix({'train_acc': train_acc, 'val_acc': val_acc, 'train_f1': train_f1, 'val f1': val_f1})
 
-            writer.add_scalar('loss/training loss', losses, epoch)
-            writer.add_scalar('acc/training acc', train_acc, epoch)
-            writer.add_scalar('acc/val acc', val_acc, epoch)
-            writer.add_scalar('f1/train f1', train_f1, epoch)
-            writer.add_scalar('f1/val f1', val_f1, epoch)
-
         model.load_state_dict(best_model_dict)
         model.eval()
         preds, labels = gnn_validation(test_loader, model)
@@ -123,9 +114,6 @@ if __name__ == '__main__':
         print(f'test acc: {test_acc}, test f1: {test_f1}')
         test_accs.append(test_acc)
         test_f1s.append(test_f1)
-
-        writer.flush()
-        writer.close()
 
         torch.save(best_model_dict, os.path.join(root, f'gnn{r}.pt'))
 
