@@ -1,21 +1,16 @@
-import numpy as np
-import sys
-from sys import getsizeof
-import json
-import fractions
-import math
-import random
 import inspect
+import json
+import random
+import sys
 import time
-
-import phe as paillier
-from phe import EncodedNumber, EncryptedNumber
-from phe.util import invert, powmod, mulmod, getprimeover, isqrt
 from collections import defaultdict
 
+import numpy as np
+import phe as paillier
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from phe import EncryptedNumber
+from phe.util import invert
+
 from models.mnist_cnn import MNIST_CNN
 
 LOG2_BASE = 4.0
