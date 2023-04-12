@@ -34,3 +34,10 @@ After that, simply copy the `train` and `test` folder under `./datasets/FEMNIST`
 ## Train GNN and MLP baseline
 Once you have created the graph datasets, you can train a heterogeneous GNN on them.
 Simply run `train_gnn.py` or `mlp_baseline.py` with deep learning hyperparameters. Don't forget to include your created datasets :)
+
+## Dynamic filtering
+After training the GNN, we can filter out malicious parameter nodes. For comparison with/without filtering, run e.g.
+
+`python train_perturb_mnist_cnns.py --global_epoch 20 --seed 42 --model_perturb label --ascent_steps 3 --perturb_rate 0.5`
+
+`python train_perturb_mnist_cnns.py --global_epoch 20 --seed 42 --model_perturb label --ascent_steps 3 --perturb_rate 0.5 --filter_models  --modelpath trained_gnns/gnn0.pt --aggrPergraph 10 --modeslPeraggr 5`
