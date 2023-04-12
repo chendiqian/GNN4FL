@@ -1,4 +1,4 @@
-# FedGNN: our paper title
+# Trusted Federated Learning in 6G with Distributed Ledger Technology and Graph Neural Networks
 
 ## Environment setup
 
@@ -10,22 +10,17 @@
 
 `pip install jupyterlab`
 
-## CNN models dataset creation
+## Graph dataset creation
 The project is not aimed at training a CNN with SOTA result, but to analyze the performance of federated learning. 
 Therefore, we train a CNN with a simple architecture. The example script is e.g.
 
-`python create_cnn_models.py --digitsPermodel 10`
+`python train_mnist_cnns.py --create_gnn --aggrPergraph 10 --modeslPeraggr 5 --local_epoch 5 --global_epoch 20 --model_perturb label --ascent_steps 3 --perturb_rate 0.5 --seed 42`
 
-which will give a set of models trained on different digits with different initialization seeds. The trained models will be used as a dataset.
+which will give a set of models trained on different digits with given initialization seeds. The trained models will be used as a dataset.
 
 For FEMNIST dataset, we use the [LEAF](https://github.com/TalwalkarLab/leaf) repo, please see to the official repo and create FEMNIST dataset. 
 After that, simply copy the `train` and `test` folder under `./datasets/FEMNIST`.
 
-## Graph dataset creation
-For each graph, we have several models as parameter nodes, and several virtual aggregator nodes. Run e.g.
-
-`python create_graph_datasets.py` with desired hyperparameters. Remember to specify `--cnn_db` for the CNN dataset.
-
 ## Train GNN and MLP baseline
 Once you have created the graph datasets, you can train a heterogeneous GNN on them.
-Simply run `train_gnn.py` or `mlp_baseline.py` with deep learning hyperparameters.
+Simply run `train_gnn.py` or `mlp_baseline.py` with deep learning hyperparameters. Don't forget to include your created datasets :)
