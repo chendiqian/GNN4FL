@@ -1,4 +1,4 @@
-# Trusted Federated Learning in 6G with Distributed Ledger Technology and Graph Neural Networks
+# Advancing Federated Learning in 6G: A Trusted Architecture with Graph-based Analysis
 
 ## Environment setup
 
