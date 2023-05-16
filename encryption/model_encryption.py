@@ -1,21 +1,44 @@
-import inspect
-import json
-import random
-import sys
-import time
-from collections import defaultdict
-
 import numpy as np
-import phe as paillier
-import torch
-from phe import EncryptedNumber
-from phe.util import invert
+import sys
+from sys import getsizeof
+import json
+import fractions
+import math
+import random
+import inspect
+import datetime
+import time
+import pandas as pd
 
+import phe as paillier
+from phe import EncodedNumber, EncryptedNumber
+from phe.util import invert, powmod, mulmod, getprimeover, isqrt
+from collections import defaultdict
+import threading
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from models.mnist_cnn import MNIST_CNN
 
 LOG2_BASE = 4.0
 FLOAT_MANTISSA_BITS = sys.float_info.mant_dig
 BASE = 16
+
+class myThread (threading.Thread):
+    def __init__(self, threadID, matrix, encryption):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.encryption = encryption
+        self.matrix = matrix
+
+    def run(self):
+        # Get lock to synchronize threads
+        threadLock.acquire()
+        # print_time(self.name, self.counter, 3)
+        model_projection_paillier(self.threadID, self.encryption, self.matrix)
+        # Free lock to release next thread
+        threadLock.release()
 
 def retrieve_name(var):
     callers_local_vars = inspect.currentframe().f_back.f_locals.items()
@@ -238,7 +261,7 @@ def model_decryption_paillier(model_dict_encryption, public_n, private_p, privat
 
     return model_dict_paillier
 
-def model_projection(model_dict_encryption, projection_matirx, public_n, private_p, private_q):
+def model_projection(model_encryption_flatten, projection_matirx, public_n):
     """
         :param model_dict_encryption:
             {key: {ciphertext: X, exponent: X}, ...}
@@ -247,7 +270,61 @@ def model_projection(model_dict_encryption, projection_matirx, public_n, private
             projection_dict_encryption
                 {key: {ciphertext: X, exponent: X}, ...}
                 type(x) == np.ndarray
-        """
+    """
+    matrix_shape = projection_matirx.shape
+    matrix_size = projection_matirx.size
+    public_nsquare = public_n * public_n
+
+    # ------------------------- Encoded -------------------------  #
+    # class EncodedNumber(object):
+    #     def __init__(self, public_key, encoding, exponent):
+    #         self.public_key = public_key
+    #         self.encoding = encoding
+    #         self.exponent = exponent
+    begin_time = time.time()
+    _, bin_flt_exponent = np.frexp(projection_matirx)
+    bin_lsb_exponent = bin_flt_exponent - FLOAT_MANTISSA_BITS
+    exponent = np.floor(bin_lsb_exponent / LOG2_BASE)
+    int_rep_float = np.around(projection_matirx * BASE ** -exponent)
+    # bias_int_rep_float_ = np.around(bias * BASE ** -bias_exponent)
+    int_rep = int_rep_float.astype(int)
+    encoding = int_rep % public_n
+
+    neg_plaintext = public_n - encoding  # = abs(plaintext - nsquare)
+    neg_ciphertext = (public_n * neg_plaintext + 1) % public_nsquare
+    neg_ciphertext_flatten = neg_ciphertext.flatten()
+    nude_ciphertext_flatten = np.array([invert(i, public_nsquare) for i in neg_ciphertext_flatten])
+    raw_encrypted_number_flatten = nude_ciphertext_flatten % public_nsquare
+
+    matrix_ciphertext = raw_encrypted_number_flatten.reshape(matrix_shape)
+    print(f"time for 前摇: {time.time() - begin_time}")
+
+    begin_time = time.time()
+    a = np.array([pow(matrix_ciphertext[i], model_encryption_flatten[i], public_nsquare) for i in range(len(matrix_ciphertext))])
+    print(f"time for multiply: {time.time() - begin_time}")
+    begin_time = time.time()
+    while (a.shape[0] >= 2):
+        mid = a.shape[0] // 2
+        mid_a = np.remainder(a[:mid] * a[mid: 2 * mid], public_nsquare)
+        if a.shape[0] % 2:
+            mid_a *= a[-1]
+        a = mid_a
+    print(f"time for add: {time.time() - begin_time}")
+    return
+
+def model_projection_paillier(idx, model_encryption_paillier, projection_matrix):
+    # print(f"-------------------- {idx} ----------------")
+    ans = [model_encryption_paillier[idx] * projection_matrix[idx] for idx in range(len(model_encryption_paillier))]
+    return
+
+def model_add(model_encryption_flatten, public_n):
+    public_nsquare = public_n * public_n
+    np.remainder(model_encryption_flatten * model_encryption_flatten, public_nsquare)
+    return
+
+def model_add_paillier(model_encryption_paillier):
+    a = [model_encryption_paillier[idx] + model_encryption_paillier[idx] for idx in range(len(model_encryption_paillier))]
+    return
 
 def dict_ndarray2json(dic):
     """
@@ -267,6 +344,12 @@ def dict_ndarray2json(dic):
                 raise TypeError('Expected list or np.ndarray type but got: %s' % type(keyitem))
             json_result[key][keyword] = keyitem
     return json.dumps(json_result)
+
+def dict_torch2ndarray(dic):
+    dicc = dict()
+    for key, val in dic.items():
+        dicc[key] = val.numpy().copy()
+    return dicc
 
 def json2dict_ndarray(json_str):
     """
@@ -317,11 +400,53 @@ def dict_comp(dict1, dict2):
             return False
     return True
 
+def dict_torch2list(dic):
+    dicc = dict()
+    for key, val in dic.items():
+        dicc[key] = val.tolist().copy()
+    return dicc
+
+def model_size(cnn_weights, public_key):
+    cnn_tran = dict()
+    cnn_weights_ndarray = dict_torch2ndarray(cnn_weights)
+
+    for key in cnn_weights.keys():
+        # if key!= "conv1.weight":
+        #     continue
+        item_shape = cnn_weights[key].shape
+        # print(key, item_shape)
+        weight = cnn_weights_ndarray[key].flatten()
+        weight_tran = np.ndarray(shape=weight.shape, dtype=object)
+        for idx in range(len(weight)):
+            item_c = public_key.encrypt(weight[idx].item())
+            item_cdict = {"c.c": item_c._EncryptedNumber__ciphertext, "c.e": item_c.exponent}
+            weight_tran[idx] = json.dumps(item_cdict)
+
+        weight_tran = weight_tran.reshape(item_shape)
+        # print(key, weight_tran.shape)
+        cnn_tran[key] = weight_tran.tolist()  # list to json
+
+    cnn_tranT = json.dumps(cnn_tran)
+    return getsizeof(cnn_tranT) / 2 ** 20
+
 if __name__ == "__main__":
-    times = 1
+    times = 20
+    vector = 1
+    connected_client_number = 1
+    c = 1
     time_encryption = np.empty([times])
+    time_encryption_paillier = np.empty([times])
     time_decryption = np.empty([times])
+    time_projection_multiply = np.empty([times])
+    time_projection_multiply_paillier = np.empty([times])
+    time_projection_add_paillier = np.empty([times])
+    time_projection_add = np.empty([times])
+    time_semi = np.empty([times])
     time_end = np.empty([times])
+    size_encryption = np.empty([times])
+    size = np.empty([times])
+    paillier_flag = True
+    thread_number = 32 * 1
 
     for idx in range(times):
         if not (idx % 10):
@@ -330,36 +455,124 @@ if __name__ == "__main__":
         time_begin = time.time()
         cnn = MNIST_CNN()
         cnn_weights = cnn.state_dict()
-        print("The number of parameters: ", sum([p.data.nelement() for p in cnn.parameters()]))
+        # print("The number of parameters: ", sum([p.data.nelement() for p in cnn.parameters()]))
 
         ############################  KEY GENERATION ##########################################
-        public_key, private_key = paillier.generate_paillier_keypair(n_length=512)
+        public_key, private_key = paillier.generate_paillier_keypair(n_length=128)
         # ------ PUBLIC ----- #
         public_n = public_key.n
         # ------ PRIVATE ----- #
         private_p = private_key.p
         private_q = private_key.q
 
+        # ------ Paillier ----- #
         time_en_begin = time.time()
-        model_dict_encryption = model_encryption(cnn_weights, public_n)
-        time_encryption[idx] = time.time() - time_en_begin
-        # model_json = dict_ndarray2json(model_dict_encryption)
-        # model_dict = json2dict_ndarray(model_json)
+        model_dict_encryption_paillier = model_encryption_paillier(cnn_weights, public_n)
+        time_encryption_paillier[idx] = time.time() - time_en_begin
+        print(f"The {idx}-th experiment: paillier encryption time-usage {time_encryption_paillier[idx]} ")
+        model_encryption_paillier_flatten = []
+        keys = list(model_dict_encryption_paillier.keys())
+        for key in keys:
+            model_encryption_paillier_flatten += list(np.array(model_dict_encryption_paillier[key]).flatten())
+        # ------ porjection -----
+        length_mini = len(model_encryption_paillier_flatten) // c
+        model_encryption_mini = model_encryption_paillier_flatten[0: length_mini]
+        matrix = list(np.random.rand(len(model_encryption_mini)))
+        time_en_begin = time.time()
+        threadLock = threading.Lock()
+        threads = []
+        threads_init = dict()
+
+        for i in range(thread_number):
+            matrix = list(np.random.rand(len(model_encryption_mini)))
+            threads_init[i] = myThread(idx, matrix, model_encryption_mini)
+
+        for i in range(thread_number):
+            threads_init[i].start()
+
+        for i in range(thread_number):
+            threads.append(threads_init[i])
+
+        # Wait for all threads to complete
+        for t in threads:
+            t.join()
+
+        a = time.time() - time_en_begin
+        if a < 10000:
+            time_projection_multiply_paillier[idx] = (time.time() - time_en_begin)
+
+        # time_en_begin = time.time()
+        # model_projection_paillier(model_encryption_paillier_flatten, matrix)
+        # time_projection_multiply_paillier[idx] += time.time() - time_en_begin
+        print(f"The {idx}-th experiment: paillier projection time-usage {time_projection_multiply_paillier[idx]} ")
+        time_en_begin = time.time()
+        model_add_paillier(model_encryption_paillier_flatten)
+        time_projection_add_paillier[idx] = time.time() - time_en_begin
+        print(f"The {idx}-th experiment: paillier add time-usage {time_projection_add_paillier[idx]} ")
+
+        model_dict_encryption = model_encryption(cnn_weights, public_n, r_value=True)
         time_de_begin = time.time()
-        model_dict_decryption = model_decryption(model_dict_encryption, public_n, private_p, private_q)
+        model_dict_decryption = model_decryption_paillier(model_dict_encryption, public_n, private_p, private_q)
         time_decryption[idx] = time.time() - time_de_begin
-
         comp_flag = dict_comp(cnn_weights, model_dict_decryption)
-        print(f"The comparison between {retrieve_name(cnn_weights)} and {retrieve_name(model_dict_decryption)} is {comp_flag}")
-        time_end[idx] = time.time() - time_begin
-        print(f"The {idx}-th experiment: time-usage {time_end[idx]} ")
+        print(f"The {idx}-th experiment: paillier decryption time-usage {time_decryption[idx]} ")
 
+        # ------ Self-developed ----- #
+        if not paillier_flag:
+            time_en_begin = time.time()
+            model_dict_encryption = model_encryption(cnn_weights, public_n, r_value=True)
+            time_encryption[idx] = time.time() - time_en_begin
+            keys = list(model_dict_encryption.keys())
+            model_encryption_flatten = np.array(model_dict_encryption[keys[0]]["ciphertext"]).flatten()
+            for key in keys:
+                if key != keys[0]:
+                    model_encryption_flatten = np.hstack(
+                        (model_encryption_flatten, np.array(model_dict_encryption[key]["ciphertext"]).flatten()))
+            projection_time_multiple = time.time()
+            for vec in range(vector):
+                matrix = np.random.rand(model_encryption_flatten.shape[0])
+                model_projection(model_encryption_flatten, matrix, public_n)
+            time_projection_multiply[idx] = time.time() - projection_time_multiple
+            projection_time_add = time.time()
+            for _ in range(connected_client_number):
+                model_add(model_encryption_flatten, public_n)
+            time_projection_add[idx] = time.time() - projection_time_add
+            cnn_tt = json.dumps(dict_torch2list(cnn_weights))
+            size[idx] = getsizeof(cnn_tt) / 2 ** 20
+            size_encryption[idx] = model_size(cnn_weights, public_key)
+            # model_json = dict_ndarray2json(model_dict_encryption)
+            # model_dict = json2dict_ndarray(model_json)
 
-    print(f"time for encryption {np.average(time_encryption)}, {np.std(time_encryption)}")
+            print(f"The comparison between {retrieve_name(cnn_weights)} and {retrieve_name(model_dict_decryption)} is {comp_flag}")
+            time_end[idx] = time.time() - time_begin
+            print(f"The {idx}-th experiment: projection time-usage {time_projection_multiply[idx]} ")
+            print(f"The {idx}-th experiment: add time-usage {time_projection_add[idx]} ")
+            print(f"The {idx}-th experiment: time-usage {time_end[idx]} \n")
+
+    print("\n ############################################################################# \n")
+    print(f"time for encryption paillier {np.average(time_encryption_paillier)}, {np.std(time_encryption_paillier)}")
+    print(
+        f"time for multiply paillier {np.average(time_projection_multiply_paillier)}, {np.std(time_projection_multiply_paillier)}")
+    print(f"time for add paillier {np.average(time_projection_add_paillier)}, {np.std(time_projection_add_paillier)}")
     print(f"time for decryption {np.average(time_decryption)}, {np.std(time_decryption)}")
+    # print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! self-developed !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    # print(f"time for encryption {np.average(time_encryption)}, {np.std(time_encryption)}")
+    # print(f"time for projection {np.average(time_projection_multiply)}, {np.std(time_projection_multiply)}")
+    # print(f"time for add {np.average(time_projection_add)}, {np.std(time_projection_add)}")
     print(f"time for the whole process {np.average(time_end)}, {np.std(time_end)}")
+    # print(f"size for encryption {np.average(size_encryption)}, {np.std(size_encryption)}")
+    # print(f"size  {np.average(size)}, {np.std(size)}")
     print("Heyha!")
 
-
+    ans_record = dict()
+    ans_record["projection"] = time_projection_multiply_paillier
+    ans_record["add"] = time_projection_add_paillier
+    ans_record["decryption"] = time_decryption
+    ans_record["encryption"] = time_encryption_paillier
+    now = datetime.datetime.now()
+    formatted_time = now.strftime("%m_%d_%H_%M")
+    dff = pd.DataFrame(ans_record)
+    df_t = dff.T
+    df_t.to_excel(formatted_time + ".xlsx", index=True)
 
 
