@@ -1,5 +1,7 @@
 # Advancing Federated Learning in 6G: A Trusted Architecture with Graph-based Analysis
 
+Official implementation for the paper _Advancing Federated Learning in 6G: A Trusted Architecture with Graph-based Analysis_ accepted at [GlobeCom2023](https://globecom2023.ieee-globecom.org/)
+
 ## Environment setup
 
 ### install pytorch, see [PyTorch](https://pytorch.org/get-started/previous-versions/)
