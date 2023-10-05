@@ -6,7 +6,9 @@ A pre-print of our paper can be viewed on [arXiv](https://arxiv.org/abs/2309.055
 
 ## Proposed architecture
 <img src="https://github.com/chendiqian/GNN4FL/blob/master/proposed%20architecture.png" alt="drawing" width="800"/>
-*A trusted architecture for FL support with graph-based analysis*
+<p align="center">
+// A trusted architecture for FL support with graph-based analysis
+</p>
 
 ## Environment setup
 
