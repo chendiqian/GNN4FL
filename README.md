@@ -5,8 +5,8 @@ Official implementation for the paper _Advancing Federated Learning in 6G: A Tru
 A pre-print of our paper can be viewed on [arXiv](https://arxiv.org/abs/2309.05525)
 
 ## Proposed architecture
-
-<img src="https://github.com/chendiqian/GNN4FL/blob/master/proposed%20architecture.png" alt="drawing" width="1000"/>
+<img src="https://github.com/chendiqian/GNN4FL/blob/master/proposed%20architecture.png" alt="drawing" width="800"/>
+*A trusted architecture for FL support with graph-based analysis*
 
 ## Environment setup
 
