@@ -4,6 +4,10 @@ Official implementation for the paper _Advancing Federated Learning in 6G: A Tru
 
 A pre-print of our paper can be viewed on [arXiv](https://arxiv.org/abs/2309.05525)
 
+## Proposed architecture
+
+![A trusted architecture for FL support with graph-based analysis](proposed architecture.png)
+
 ## Environment setup
 
 ### install pytorch, see [PyTorch](https://pytorch.org/get-started/previous-versions/)
